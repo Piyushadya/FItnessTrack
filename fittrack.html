@@ -689,9 +689,15 @@ position:relative;transition:all .15s;
     <div class="fg"><label>Days/Week</label><select class="fi" id="ep-days"><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></div>
     <div class="fg"><label>Session (min)</label><select class="fi" id="ep-dur"><option>30</option><option>45</option><option selected>60</option><option>90</option></select></div>
   </div>
+  <div style="margin:10px 0 6px;background:linear-gradient(135deg,rgba(155,89,182,0.12),rgba(46,204,113,0.08));border:1px solid rgba(155,89,182,0.25);border-radius:14px;padding:12px 14px">
+    <div style="font-size:12px;font-weight:700;color:var(--p);margin-bottom:4px">✨ Smart Plan Generator</div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.5">Generate a custom workout &amp; meal plan tailored to your exact stats, goal, fitness level and calorie target — instantly.</div>
+    <button id="ai-gen-btn" style="width:100%;padding:11px;border-radius:11px;background:linear-gradient(135deg,var(--p),#5b3fa0);color:#fff;font-size:13px;font-weight:800;border:none;cursor:pointer;font-family:var(--f);letter-spacing:0.2px" onclick="saveAndGenerateAI()">⚡ Save &amp; Generate My Plan</button>
+    <div id="ai-gen-status" style="font-size:11px;color:var(--dim);text-align:center;margin-top:7px;min-height:14px"></div>
+  </div>
   <div class="irow" style="margin-top:4px">
     <button class="btn-sec" style="flex:1" onclick="closeSheet('sh-editprofile')">Cancel</button>
-    <button class="btn-main" style="flex:2" onclick="saveProfile()">Save Changes</button>
+    <button class="btn-main" style="flex:2" onclick="saveProfile()">Save Only</button>
   </div>
 </div></div>
 
@@ -2586,6 +2592,293 @@ function setAvatarDisplay(val) {
     el.textContent = val || '🏋️';
     el.style.padding = '';
   }
+}
+
+
+// ══════════════════════════════════
+// AI PLAN GENERATION
+// ══════════════════════════════════
+function setAiStatus(msg, col) {
+  var el = document.getElementById('ai-gen-status');
+  if (el) { el.textContent = msg; el.style.color = col || 'var(--dim)'; }
+}
+
+function saveAndGenerateAI() {
+  // Save profile first
+  saveProfile();
+
+  var p = D.profile;
+  var btn = document.getElementById('ai-gen-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  setAiStatus('Building your personalised plan…', 'var(--p)');
+
+  // Use setTimeout so the UI updates before the heavy work
+  setTimeout(function() {
+    try {
+      var plan = generatePlanLocally(p);
+
+      D.workouts = plan.workouts;
+      D.meals    = plan.meals;
+      D.logged   = {};
+      D.done     = {};
+      D.wktDay   = 0;
+      D.mealDay  = 1;
+      save();
+
+      setAiStatus('✅ Plan generated! ' + plan.workouts.length + ' workouts & ' + plan.meals.length + ' meals.', 'var(--g)');
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Regenerate Plan'; }
+
+      setTimeout(function() {
+        closeSheet('sh-editprofile');
+        renderWorkout();
+        renderMeals();
+        renderHome();
+        showPage('home');
+        showUndoToast('Plan ready! Check Workout & Meals tabs.');
+      }, 900);
+
+    } catch(err) {
+      console.error('Plan generation error:', err);
+      setAiStatus('⚠️ ' + (err.message || 'Error generating plan'), '#ff2d78');
+      if (btn) { btn.disabled = false; btn.textContent = '🤖 Retry'; }
+    }
+  }, 80);
+}
+
+function generatePlanLocally(p) {
+  var isGain     = p.goal === 'gain';
+  var isMaintain = p.goal === 'maintain';
+  var lvl        = p.level || 'Intermediate';
+  var days       = Math.min(Math.max(parseInt(p.days) || 5, 2), 7);
+  var dur        = parseInt(p.dur) || 60;
+  var cal        = parseInt(p.cal) || 1900;
+  var prot       = parseInt(p.prot) || 140;
+  var unit       = p.unit || 'kg';
+
+  // ── Sets/reps by level ──────────────────────────────────────────
+  var S = {
+    Beginner:     { sets:'3', repsStr:function(lo,hi){ return String(lo); },     rest:'90s' },
+    Intermediate: { sets:'4', repsStr:function(lo,hi){ return lo+'-'+hi; },      rest:'60s' },
+    Advanced:     { sets:'5', repsStr:function(lo,hi){ return String(hi); },      rest:'45s' }
+  }[lvl] || { sets:'4', repsStr:function(lo,hi){ return lo+'-'+hi; }, rest:'60s' };
+
+  var R = S.repsStr;
+
+  // ── Cardio duration by session length ──────────────────────────
+  var cardioMin = dur <= 30 ? 8 : dur <= 45 ? 10 : dur <= 60 ? 15 : 20;
+
+  // ── Exercise library keyed by goal + body part ──────────────────
+  var LIBRARY = {
+    lose: {
+      upper:  [
+        {name:'Bench Press',         sets:S.sets, reps:R(10,15), rest:S.rest},
+        {name:'Lat Pulldown',        sets:S.sets, reps:R(10,15), rest:S.rest},
+        {name:'DB Shoulder Press',   sets:S.sets, reps:R(10,12), rest:S.rest},
+        {name:'Cable Row',           sets:S.sets, reps:R(12,15), rest:S.rest},
+        {name:'Tricep Pushdown',     sets:'3',    reps:R(12,15), rest:'45s'},
+        {name:'Bicep Curl',          sets:'3',    reps:R(12,15), rest:'45s'},
+        {name:'Face Pull',           sets:'3',    reps:R(15,20), rest:'30s'},
+        {name:'Lateral Raises',      sets:'3',    reps:R(15,20), rest:'30s'}
+      ],
+      lower:  [
+        {name:'Goblet Squat',        sets:S.sets, reps:R(12,15), rest:S.rest},
+        {name:'Romanian Deadlift',   sets:S.sets, reps:R(12,15), rest:S.rest},
+        {name:'Leg Press',           sets:S.sets, reps:R(15,20), rest:S.rest},
+        {name:'Glute Bridge',        sets:'3',    reps:R(15,20), rest:'45s'},
+        {name:'Calf Raises',         sets:'3',    reps:R(20,25), rest:'30s'},
+        {name:'Step-Ups',            sets:'3',    reps:R(12,15), rest:'45s'}
+      ],
+      hiit:   [
+        {name:'Kettlebell Swing',    sets:'4',    reps:R(15,20), rest:'30s'},
+        {name:'Battle Ropes',        sets:'4',    reps:'30 sec', rest:'30s'},
+        {name:'Box Jumps',           sets:'3',    reps:R(10,12), rest:'45s'},
+        {name:'Mountain Climbers',   sets:'4',    reps:'30 sec', rest:'20s'},
+        {name:'Burpees',             sets:'3',    reps:R(10,12), rest:'45s'},
+        {name:'Jump Rope',           sets:'4',    reps:'45 sec', rest:'15s'}
+      ]
+    },
+    gain: {
+      upper:  [
+        {name:'Barbell Bench Press', sets:S.sets, reps:R(6,10),  rest:'90s'},
+        {name:'Weighted Pull-Ups',   sets:S.sets, reps:R(6,10),  rest:'90s'},
+        {name:'Overhead Press',      sets:S.sets, reps:R(6,10),  rest:'90s'},
+        {name:'Barbell Row',         sets:S.sets, reps:R(8,10),  rest:'75s'},
+        {name:'Incline DB Press',    sets:'4',    reps:R(8,12),  rest:'60s'},
+        {name:'Cable Fly',           sets:'3',    reps:R(12,15), rest:'45s'},
+        {name:'EZ Bar Curl',         sets:'4',    reps:R(8,12),  rest:'60s'},
+        {name:'Skull Crushers',      sets:'4',    reps:R(8,12),  rest:'60s'}
+      ],
+      lower:  [
+        {name:'Barbell Squat',       sets:S.sets, reps:R(5,8),   rest:'120s'},
+        {name:'Deadlift',            sets:S.sets, reps:R(5,8),   rest:'120s'},
+        {name:'Leg Press',           sets:'4',    reps:R(8,12),  rest:'90s'},
+        {name:'Bulgarian Split Squat',sets:'3',   reps:R(8,10),  rest:'90s'},
+        {name:'Lying Leg Curl',      sets:'4',    reps:R(10,12), rest:'60s'},
+        {name:'Seated Calf Raise',   sets:'4',    reps:R(12,15), rest:'45s'}
+      ],
+      compound: [
+        {name:'Power Clean',         sets:'4',    reps:R(4,6),   rest:'120s'},
+        {name:'Barbell Row',         sets:'4',    reps:R(6,8),   rest:'90s'},
+        {name:'Dips (weighted)',      sets:'4',    reps:R(6,10),  rest:'90s'},
+        {name:'T-Bar Row',           sets:'4',    reps:R(8,10),  rest:'75s'},
+        {name:'Arnold Press',        sets:'3',    reps:R(10,12), rest:'60s'}
+      ]
+    }
+  };
+
+  // Use lose library for maintain too, but lighter
+  if (isMaintain) {
+    LIBRARY.maintain = LIBRARY.lose;
+  }
+  var lib = LIBRARY[p.goal] || LIBRARY.lose;
+
+  // ── Cardio labels ──────────────────────────────────────────────
+  var CARDIO = isGain
+    ? ['Light Treadmill – ' + cardioMin + ' min', 'Stationary Bike – ' + cardioMin + ' min',
+       'Rowing Machine – ' + cardioMin + ' min',  'Elliptical – ' + cardioMin + ' min']
+    : ['HIIT Bike – ' + cardioMin + ' min',       'Incline Walk – ' + cardioMin + ' min',
+       'HIIT Rowing – ' + cardioMin + ' min',     'Sprint Intervals – ' + cardioMin + ' min',
+       'Jump Rope HIIT – ' + cardioMin + ' min',  'StairMaster – ' + cardioMin + ' min'];
+
+  // ── Build workout days ──────────────────────────────────────────
+  var DAY_TEMPLATES = isGain ? [
+    { name:'Chest & Triceps',    focus:'Chest · Triceps · Front Delts',  pick:'upper',    exIdx:[0,4,5,7],   cardio:0 },
+    { name:'Back & Biceps',      focus:'Back · Biceps · Rear Delts',     pick:'upper',    exIdx:[1,3,5,6],   cardio:1 },
+    { name:'Legs (Heavy)',       focus:'Quads · Hamstrings · Glutes',    pick:'lower',    exIdx:[0,1,2,4],   cardio:2 },
+    { name:'Shoulders & Arms',   focus:'Delts · Biceps · Triceps',       pick:'compound', exIdx:[0,1,2,3,4], cardio:3 },
+    { name:'Full Body Power',    focus:'Compound Lifts · Power',         pick:'lower',    exIdx:[0,1,3,4,5], cardio:0 },
+    { name:'Push Day',           focus:'Chest · Shoulders · Triceps',    pick:'upper',    exIdx:[0,2,4,7],   cardio:1 },
+    { name:'Pull Day',           focus:'Back · Biceps · Rear Delts',     pick:'upper',    exIdx:[1,3,5,6],   cardio:2 }
+  ] : [
+    { name:'Upper Body + Cardio', focus:'Chest · Back · Shoulders · Arms', pick:'upper', exIdx:[0,1,2,3,4,7], cardio:0 },
+    { name:'Lower Body + Cardio', focus:'Quads · Hamstrings · Glutes',     pick:'lower', exIdx:[0,1,2,3,4,5], cardio:1 },
+    { name:'HIIT Circuit',        focus:'Full Body · Fat Burn · Core',     pick:'hiit',  exIdx:[0,1,2,3,4,5], cardio:2 },
+    { name:'Upper Body Burn',     focus:'Chest · Back · Arms · Core',      pick:'upper', exIdx:[0,1,3,4,5,6], cardio:3 },
+    { name:'Lower Body Burn',     focus:'Glutes · Hamstrings · Calves',    pick:'lower', exIdx:[0,1,2,3,4,5], cardio:4 },
+    { name:'Full Body Circuit',   focus:'Compound · Core · Cardio',        pick:'hiit',  exIdx:[0,1,2,3,4,5], cardio:5 },
+    { name:'Active Recovery',     focus:'Mobility · Stretching · Core',    pick:'hiit',  exIdx:[0,1,2,3],      cardio:0 }
+  ];
+
+  var workouts = [];
+  for (var d = 0; d < days; d++) {
+    var tmpl   = DAY_TEMPLATES[d % DAY_TEMPLATES.length];
+    var pool   = lib[tmpl.pick] || lib.upper || [];
+    var exList = tmpl.exIdx
+      .filter(function(ix){ return ix < pool.length; })
+      .map(function(ix){ return pool[ix]; });
+    // Trim to fit session: ~10 min/exercise roughly
+    var maxEx = Math.min(exList.length, Math.max(3, Math.floor(dur / 10)));
+    exList = exList.slice(0, maxEx);
+    workouts.push({
+      name:      tmpl.name,
+      focus:     tmpl.focus,
+      hiit:      CARDIO[tmpl.cardio % CARDIO.length],
+      exercises: exList
+    });
+  }
+
+  // ── Build 7-day meal plan ───────────────────────────────────────
+  // Distribute calories: B 25%, S1 10%, L 35%, S2 10%, D 30% (4 meals: B+S1+L+D)
+  var mealCal = {
+    Breakfast: Math.round(cal * 0.25),
+    Snack:     Math.round(cal * 0.10),
+    Lunch:     Math.round(cal * 0.35),
+    Dinner:    Math.round(cal * 0.30)
+  };
+  var mealProt = {
+    Breakfast: Math.round(prot * 0.25),
+    Snack:     Math.round(prot * 0.10),
+    Lunch:     Math.round(prot * 0.35),
+    Dinner:    Math.round(prot * 0.30)
+  };
+
+  // Different food pools based on goal
+  var FOOD = isGain ? {
+    Breakfast: [
+      'Oats 100g + Banana + Peanut Butter + Whole Milk',
+      'Eggs 3 + Whole Wheat Toast 2 slices + Avocado',
+      'Greek Yogurt 200g + Granola + Honey + Berries',
+      'Omelette 4 eggs + Cheese + Whole Wheat Toast',
+      'Protein Pancakes + Maple Syrup + Banana',
+      'Overnight Oats + Nuts + Protein Powder',
+      'Rice + Eggs 3 + Vegetables + Butter'
+    ],
+    Snack: [
+      'Mass Gainer Shake + Banana',
+      'Whole Milk 300ml + Protein Bar',
+      'Peanut Butter 2 tbsp + Rice Cakes 3',
+      'Trail Mix + Dried Fruit 50g',
+      'Cheese Sandwich + Apple',
+      'Greek Yogurt + Granola',
+      'Nuts 40g + Dates 3'
+    ],
+    Lunch: [
+      'Chicken Breast 200g + Brown Rice 150g + Olive Oil',
+      'Beef Stir Fry + Noodles 150g + Vegetables',
+      'Salmon 180g + Sweet Potato + Broccoli',
+      'Tuna Pasta 200g + Cheese + Vegetables',
+      'Chicken Curry + Basmati Rice 150g + Naan',
+      'Pulled Chicken Bowl + Rice + Beans + Avocado',
+      'Egg Fried Rice + Chicken 150g + Vegetables'
+    ],
+    Dinner: [
+      'Steak 200g + Mashed Potato + Asparagus',
+      'Baked Salmon + Quinoa 100g + Spinach Salad',
+      'Chicken Thighs 200g + Rice + Roasted Vegetables',
+      'Beef Mince + Pasta 150g + Tomato Sauce + Cheese',
+      'Whole Chicken Leg + Sweet Potato + Greens',
+      'Pork Loin + Potato + Mixed Vegetables',
+      'Lamb Chops 200g + Couscous + Salad'
+    ]
+  } : {
+    Breakfast: [
+      'Egg White Omelette 4 eggs + Spinach + Tomato',
+      'Greek Yogurt 150g + Berries + Flaxseeds',
+      'Oats 50g + Protein Powder + Almond Milk',
+      'Scrambled Eggs 3 + Whole Wheat Toast',
+      'Smoothie: Banana + Protein Powder + Oats + Almond Milk',
+      'Poha + Sprouts + Green Chutney',
+      'Idli 3 + Sambar + Coconut Chutney'
+    ],
+    Snack: [
+      'Apple + Peanut Butter 1 tbsp',
+      'Roasted Chana 40g',
+      'Greek Yogurt 100g + Cucumber',
+      'Protein Shake 1 scoop',
+      '2 Boiled Eggs + Salt & Pepper',
+      'Makhana 30g + Black Pepper',
+      'Almonds 20g + Green Tea'
+    ],
+    Lunch: [
+      'Chicken Breast 150g + Brown Rice 100g + Salad',
+      'Dal + 2 Wheat Roti + Curd',
+      'Grilled Fish 150g + Quinoa + Vegetables',
+      'Rajma + Rice + Onion Salad',
+      'Paneer Tikka 100g + 2 Roti + Dal',
+      'Chicken Salad with Olive Oil Dressing',
+      'Tofu + Brown Rice + Stir-Fried Vegetables'
+    ],
+    Dinner: [
+      'Grilled Chicken 150g + Sautéed Vegetables',
+      'Egg Bhurji 3 eggs + 2 Roti',
+      'Dal + Vegetables + 1 Roti',
+      'Fish Curry + 1 Cup Rice',
+      'Tofu Stir Fry + 2 Roti',
+      'Chicken Soup + 1 Roti',
+      'Lentil Soup + Salad + Boiled Egg'
+    ]
+  };
+
+  var meals = [];
+  for (var day = 1; day <= 7; day++) {
+    var idx = day - 1;
+    meals.push({ day:day, type:'Breakfast', food:FOOD.Breakfast[idx], cal:mealCal.Breakfast, prot:mealProt.Breakfast });
+    meals.push({ day:day, type:'Snack',     food:FOOD.Snack[idx],     cal:mealCal.Snack,     prot:mealProt.Snack     });
+    meals.push({ day:day, type:'Lunch',     food:FOOD.Lunch[idx],     cal:mealCal.Lunch,     prot:mealProt.Lunch     });
+    meals.push({ day:day, type:'Dinner',    food:FOOD.Dinner[idx],    cal:mealCal.Dinner,    prot:mealProt.Dinner    });
+  }
+
+  return { workouts: workouts, meals: meals };
 }
 
 // ══════════════════════════════════
