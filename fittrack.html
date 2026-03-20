@@ -220,7 +220,12 @@ select.fi{cursor:pointer}
 
 /* ─── PROFILE CARD ─── */
 .prof-card{display:flex;align-items:center;gap:14px}
-.avatar{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,var(--a),#ff2d78);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;box-shadow:0 0 24px rgba(255,92,53,0.3)}
+.avatar{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,var(--a),#ff2d78);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;box-shadow:0 0 24px rgba(255,92,53,0.3);cursor:pointer;transition:transform .15s}
+.avatar:active{transform:scale(.92)}
+.avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0}
+.av-opt{width:100%;aspect-ratio:1;border-radius:12px;background:var(--s2);border:2px solid var(--bdr);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.av-opt.sel{border-color:var(--a);background:rgba(255,92,53,0.12);transform:scale(1.08)}
+.av-opt:active{transform:scale(.92)}
 .sett-row{display:flex;align-items:center;justify-content:space-between;background:var(--s1);border:1px solid var(--bdr);border-radius:13px;padding:12px 14px;margin-bottom:8px;cursor:pointer}
 .sett-l{display:flex;align-items:center;gap:10px}
 .sett-ico{font-size:16px}
@@ -550,7 +555,7 @@ select.fi{cursor:pointer}
       </div>
       <div class="card">
         <div class="prof-card">
-          <div class="avatar">🏋️</div>
+          <div class="avatar" id="pr-avatar" onclick="openAvatarPicker()" title="Change picture">🏋️</div>
           <div style="flex:1">
             <div id="pr-name" style="font-size:20px;font-weight:800">Athlete</div>
             <div id="pr-sub" style="font-size:12px;color:var(--dim);margin-top:3px">Intermediate · Fat Loss</div>
@@ -786,7 +791,8 @@ var DEFAULT_PROFILE = {
   goal:'lose', months:6, level:'Intermediate', // auto-set from weights
   cal:1900, prot:140, carb:180, fat:55,
   days:5, dur:60, startWeight:100,
-  startDate: todayStr()
+  startDate: todayStr(),
+  avatar: '🏋️'
 };
 
 var DEFAULT_WORKOUTS = [
@@ -1934,6 +1940,8 @@ function openLogWeight() {
 // ══════════════════════════════════
 function renderProfile() {
   var p = D.profile; if (!p) return;
+  // Update avatar display
+  setAvatarDisplay(p.avatar || '🏋️');
   document.getElementById('pr-name').textContent = p.name;
   document.getElementById('pr-sub').textContent = p.level + ' · ' + (p.goal==='lose'?'Fat Loss':p.goal==='gain'?'Muscle Gain':p.goal==='maintain'?'Maintain':'Endurance') + ' · ' + p.days + 'x/week';
   var cur = latestWeight();
@@ -2134,7 +2142,8 @@ function editGroceryItem(i) {
 function renderGrocery() {
   var el = document.getElementById('groc-items');
   if (!el) return;
-  if (!D.grocery || !D.grocery.length) {
+  if (!D.profile.avatar) D.profile.avatar = '🏋️';
+if (!D.grocery || !D.grocery.length) {
     el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim);font-size:13px">No items. Tap Edit to add some.</div>';
   } else {
     el.innerHTML = D.grocery.map(function(g, i) {
@@ -2445,6 +2454,67 @@ function calDayTap(day, month, year) {
   document.getElementById('cal-day-detail').classList.add('on');
 }
 
+
+// ══════════════════════════════════
+// AVATAR PICKER
+// ══════════════════════════════════
+var AVATARS = [
+  '🏋️','🤸','🚴','🏊','🧘','🏃',
+  '💪','⚡','🔥','🌟','👊','🎯',
+  '🦁','🐯','🦊','🐺','🦅','🐉',
+  '👨','👩','🧔','👱','🧑','👶',
+  '🍎','🥑','🥦','🏆','🎖️','🎪'
+];
+
+function openAvatarPicker() {
+  var cur = (D.profile && D.profile.avatar) || '🏋️';
+  document.getElementById('avatar-grid').innerHTML = AVATARS.map(function(em) {
+    return '<div class="av-opt' + (em === cur ? ' sel' : '') + '" data-em="' + em + '" onclick="pickAvatar(this.dataset.em)">' + em + '</div>';
+  }).join('');
+  openSheet('sh-avatar');
+}
+
+function pickAvatar(em) {
+  if (!D.profile) return;
+  D.profile.avatar = em;
+  save();
+  // Update all avatar displays
+  var pa = document.getElementById('pr-avatar');
+  if (pa) pa.textContent = em;
+  // Refresh grid selection
+  document.querySelectorAll('.av-opt').forEach(function(el) {
+    el.classList.toggle('sel', el.textContent === em);
+  });
+}
+
+function handleAvatarUpload(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    if (!D.profile) return;
+    D.profile.avatar = dataUrl; // store as data URL
+    save();
+    setAvatarDisplay(dataUrl);
+    closeSheet('sh-avatar');
+  };
+  reader.readAsDataURL(file);
+}
+
+function setAvatarDisplay(val) {
+  var el = document.getElementById('pr-avatar');
+  if (!el) return;
+  if (val && val.startsWith('data:')) {
+    // Photo upload
+    el.innerHTML = '<img src="' + val + '" style="width:100%;height:100%;object-fit:cover;border-radius:14px"/>';
+    el.style.padding = '0';
+  } else {
+    el.textContent = val || '🏋️';
+    el.style.padding = '';
+  }
+}
+
 // ══════════════════════════════════
 // INIT
 // ══════════════════════════════════
@@ -2470,6 +2540,7 @@ if (!D.wlog) D.wlog = [];
 if (!D.done) D.done = {};
 if (D.weekReset === undefined)    D.weekReset    = false;
 if (!D.workoutLog) D.workoutLog = {};
+if (!D.profile.avatar) D.profile.avatar = '🏋️';
 if (!D.grocery || !D.grocery.length) D.grocery = ['Chicken 1.5 kg','Eggs 24','Tofu 500g','Yogurt 1.5 kg','Rice & Flour','Dal, Chole, Rajma','Vegetables & Fruits','Nuts & Seeds','Oil & Spices'];
 if (D.lastWeekDone === undefined) D.lastWeekDone = null;
 if (!D.logged) D.logged = {};
@@ -2549,6 +2620,27 @@ renderMeals();
   <div class="wc-title">Week Complete!</div>
   <div class="wc-sub" id="wc-sub">You finished all workout days this week.<br>Resetting for next week…</div>
   <button class="wc-btn" onclick="wcStartFresh()">Start Next Week 🚀</button>
+</div>
+
+
+<!-- AVATAR PICKER SHEET -->
+<div class="overlay" id="sh-avatar">
+<div class="sheet">
+  <div class="sheet-pill"></div>
+  <div class="sheet-title">Choose Your Avatar</div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:4px">Tap any emoji to set as your profile picture</div>
+  <div class="avatar-grid" id="avatar-grid"></div>
+  <div style="font-size:11px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px">Or upload a photo</div>
+  <label style="display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:12px 14px;cursor:pointer">
+    <span style="font-size:20px">📷</span>
+    <div>
+      <div style="font-size:13px;font-weight:700">Upload Photo</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:2px">JPG or PNG · Shows as your avatar</div>
+    </div>
+    <input type="file" id="avatar-upload" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)"/>
+  </label>
+  <button class="btn-sec" style="width:100%;margin-top:12px" onclick="closeSheet('sh-avatar')">Done</button>
+</div>
 </div>
 
 <div id="undo-toast">
