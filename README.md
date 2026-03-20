@@ -1,6 +1,6 @@
 # 🏋️ FitTrack
 
-A fully offline, iOS-style fitness tracker that runs entirely in your browser — no app store, no installation, no account needed. Built as a single HTML file.
+A fully offline, fitness tracker that runs entirely in your browser — no app store, no installation, no account needed. Built as a single HTML file.
 
 -----
 
