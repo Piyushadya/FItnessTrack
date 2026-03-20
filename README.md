@@ -12,7 +12,7 @@ A fully offline, iOS-style fitness tracker that runs entirely in your browser �
 1. Go to your GitHub Pages link:
    
    ```
-   https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/fittrack.html
+   https://piyushadya.github.io/FItnessTrack/fittrack.html
    ```
 1. Tap the **Share** button at the bottom of the screen (the box with an arrow pointing up)
 1. Scroll down and tap **“Add to Home Screen”**
@@ -29,7 +29,7 @@ A fully offline, iOS-style fitness tracker that runs entirely in your browser �
 1. Go to your GitHub Pages link:
    
    ```
-   https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/fittrack.html
+   https://piyushadya.github.io/FItnessTrack/fittrack.html
    ```
 1. Tap the **three-dot menu** (⋮) in the top-right corner
 1. Tap **“Add to Home screen”**
